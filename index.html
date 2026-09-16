@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>주사위 HP 배틀 — 공격/회피</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460);
+    font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+    color: #fff;
+    gap: 20px;
+  }
+
+  h1 {
+    font-size: 1.5rem;
+    letter-spacing: 2px;
+    text-shadow: 0 0 20px rgba(255,255,255,0.3);
+  }
+
+  .rule {
+    font-size: 0.82rem;
+    color: #888;
+    letter-spacing: 1px;
+    max-width: 480px;
+    text-align: center;
+    line-height: 1.6;
+  }
+
+  .arena {
+    display: flex;
+    gap: 50px;
+    align-items: flex-end;
+    margin-bottom: 4px;
+  }
+
+  .fighter {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    width: 120px;
+  }
+
+  .fighter.defeated .die { opacity: 0.4; filter: grayscale(0.8); }
+  .fighter.defeated .choice-toggles { opacity: 0.4; pointer-events: none; }
+
+  .fighter-name {
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+
+  .fighter-name.d1-name { color: #60a5fa; }
+  .fighter-name.d2-name { color: #f472b6; }
+
+  .hp-bar-outer {
+    width: 120px;
+    height: 16px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.12);
+  }
+
+  .hp-bar-inner {
+    height: 100%;
+    border-radius: 10px;
+    transition: width 0.4s ease;
+  }
+
+  .fighter.d1 .hp-bar-inner { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+  .fighter.d2 .hp-bar-inner { background: linear-gradient(90deg, #ec4899, #f472b6); }
+
+  .hp-text {
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+
+  .die {
+    width: 90px;
+    height: 90px;
+    background: #f0e6d3;
+    border-radius: 16px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.3);
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    padding: 12px;
+    position: relative;
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+
+  .fighter.d1 .die { border-color: #3b82f6; box-shadow: 0 0 18px rgba(59,130,246,0.2), 0 8px 20px rgba(0,0,0,0.4); }
+  .fighter.d2 .die { border-color: #ec4899; box-shadow: 0 0 18px rgba(236,72,153,0.2), 0 8px 20px rgba(0,0,0,0.4); }
+  .fighter.defeated .die { border-color: #6b7280; }
+
+  .die.rolling { animation: shake 0.12s infinite alternate; }
+
+  @keyframes shake {
+    0%   { transform: rotate(-7deg) translateX(-3px); }
+    50%  { transform: rotate(7deg) translateX(3px); }
+    100% { transform: rotate(-5deg) translateX(-2px); }
+  }
+
+  .pip {
+    width: 16px;
+    height: 16px;
+    background: #1a1a1a;
+    border-radius: 50%;
+    justify-self: center;
+    align-self: center;
+    box-shadow: inset 0 2px 3px rgba(0,0,0,0.4);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .pip.visible { opacity: 1; }
+
+  .damage-flash {
+    position: absolute;
+    inset: 0;
+    border-radius: 16px;
+    pointer-events: none;
+    animation: flash 0.5s ease forwards;
+  }
+
+  @keyframes flash {
+    0%   { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
+  .choice-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+  }
+
+  .choice-label {
+    font-size: 0.75rem;
+    color: #888;
+    letter-spacing: 1px;
+  }
+
+  .choice-toggles {
+    display: flex;
+    gap: 6px;
+  }
+
+  .choice-btn {
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 2px solid rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.05);
+    color: #aaa;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .choice-btn:hover { color: #fff; border-color: rgba(255,255,255,0.3); }
+
+  .choice-btn.active-atk {
+    border-color: #ef4444;
+    background: rgba(239,68,68,0.2);
+    color: #ef4444;
+    box-shadow: 0 0 10px rgba(239,68,68,0.3);
+  }
+
+  .choice-btn.active-ev {
+    border-color: #22c55e;
+    background: rgba(34,197,94,0.2);
+    color: #22c55e;
+    box-shadow: 0 0 10px rgba(34,197,94,0.3);
+  }
+
+  .auto-badge {
+    font-size: 0.7rem;
+    color: #f472b6;
+    letter-spacing: 1px;
+    margin-top: 2px;
+    min-height: 14px;
+    transition: all 0.3s;
+  }
+
+  .auto-badge .icon { font-size: 0.9rem; margin-right: 4px; }
+
+  .result-banner {
+    font-size: 1.2rem;
+    font-weight: 800;
+    letter-spacing: 2px;
+    min-width: 300px;
+    text-align: center;
+    padding: 10px 18px;
+    border-radius: 12px;
+    transition: all 0.3s;
+    opacity: 0;
+    transform: scale(0.9);
+    line-height: 1.5;
+  }
+
+  .result-banner.show { opacity: 1; transform: scale(1); }
+
+  .result-banner.both-atk {
+    background: rgba(251,146,60,0.15);
+    border: 2px solid #fb923c;
+    color: #fb923c;
+  }
+
+  .result-banner.atk-ev {
+    background: rgba(255,255,255,0.06);
+    border: 2px solid rgba(255,255,255,0.15);
+    color: #9ca3af;
+  }
+
+  .result-banner.both-ev {
+    background: rgba(148,163,184,0.1);
+    border: 2px solid rgba(148,163,184,0.2);
+    color: #94a3b8;
+  }
+
+  .result-banner.defeated {
+    background: rgba(239,68,68,0.2);
+    border: 2px solid #ef4444;
+    color: #ef4444;
+    animation: pulse 1s ease infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 20px rgba(239,68,68,0.3); }
+    50%      { box-shadow: 0 0 40px rgba(239,68,68,0.6); }
+  }
+
+  button {
+    padding: 14px 48px;
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    border: none;
+    border-radius: 50px;
+    background: linear-gradient(135deg, #e94560, #c23152);
+    color: #fff;
+    cursor: pointer;
+    box-shadow: 0 5px 20px rgba(233,69,96,0.5);
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+
+  button:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(233,69,96,0.6); }
+  button:active { transform: translateY(0); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  .round-info {
+    font-size: 0.8rem;
+    color: #888;
+    letter-spacing: 1px;
+  }
+
+  .history {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+    max-width: 520px;
+    margin-top: 4px;
+  }
+
+  .history-item {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    padding: 4px 10px;
+    font-size: 0.75rem;
+    color: #9aa0a6;
+    white-space: nowrap;
+  }
+
+  .history-item span { font-weight: 700; }
+
+  .clear-btn {
+    background: none;
+    border: 1px solid rgba(255,255,255,0.2);
+    color: #aaa;
+    padding: 8px 18px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    margin-top: 6px;
+    transition: all 0.2s;
+  }
+
+  .clear-btn:hover { color: #fff; border-color: #e94560; }
+</style>
+</head>
+<body>
+
+  <h1>⚔️ 주사위 HP 배틀</h1>
+  <p class="rule">
+    주사위 1의 행동(공격/회피)을 직접 고르고, 주사위 2는 매 라운드 자동으로 선택합니다.<br>
+    <strong>공격 vs 공격</strong>: 낮은 눈이 높은 눈에게 공격당해 차이만큼 HP 감소<br>
+    <strong>공격 vs 회피</strong>: 공격 눈이 회피 눈보다 높으면 회피 관통 피해, 같거나 낮으면 회피 성공<br>
+    <strong>회피 vs 회피</strong>: 서로 피해 없음
+  </p>
+
+  <div class="arena">
+    <div class="fighter d1" id="fighter1">
+      <span class="fighter-name d1-name">주사위 1 (나)</span>
+      <div class="die" id="die1"></div>
+      <div class="hp-bar-outer"><div class="hp-bar-inner" id="hpBar1" style="width:100%"></div></div>
+      <span class="hp-text" id="hpText1">HP 100</span>
+      <div class="choice-section">
+        <span class="choice-label">내 행동 선택</span>
+        <div class="choice-toggles" id="choices1">
+          <button class="choice-btn active-atk" data-choice="atk">공격〈{Atk}</button>
+          <button class="choice-btn" data-choice="ev">회피〈{Ev}</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="fighter d2" id="fighter2">
+      <span class="fighter-name d2-name">주사위 2 (AI)</span>
+      <div class="die" id="die2"></div>
+      <div class="hp-bar-outer"><div class="hp-bar-inner" id="hpBar2" style="width:100%"></div></div>
+      <span class="hp-text" id="hpText2">HP 100</span>
+      <div class="choice-label" style="margin-top:4px; color:#f472b6;">자동 선택</div>
+      <div class="auto-badge" id="autoBadge"><span>🤖</span> 대기 중…</div>
+    </div>
+  </div>
+
+  <div class="result-banner" id="resultBanner"></div>
+  <span class="round-info">ROUND <span id="roundNum">0</span></span>
+
+  <button id="rollBtn">⚡ 굴리기</button>
+
+  <div class="history" id="history"></div>
+  <button class="clear-btn" id="clearBtn">기록 및 초기화</button>
+
+<script>
+  const PIP_PATTERNS = {
+    1: [[1,1]],
+    2: [[0,2],[2,0]],
+    3: [[0,2],[1,1],[2,0]],
+    4: [[0,0],[0,2],[2,0],[2,2]],
+    5: [[0,0],[0,2],[1,1],[2,0],[2,2]],
+    6: [[0,0],[0,2],[1,0],[1,2],[2,0],[2,2]],
+  };
+
+  function buildDie(el) {
+    el.innerHTML = '';
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 3; c++) {
+        const pip = document.createElement('div');
+        pip.classList.add('pip');
+        el.appendChild(pip);
+      }
+    }
+  }
+
+  function renderDie(el, value) {
+    const patterns = PIP_PATTERNS[value];
+    const pips = el.querySelectorAll('.pip');
+    pips.forEach(p => p.classList.remove('visible'));
+    patterns.forEach(([r, c]) => {
+      pips[r * 3 + c].classList.add('visible');
+    });
+  }
+
+  function randomDieValue() {
+    return Math.floor(Math.random() * 6) + 1;
+  }
+
+  function randomChoice() {
+    return Math.random() < 0.5 ? 'atk' : 'ev';
+  }
+
+  function animateRoll(dieEl, callback) {
+    dieEl.classList.add('rolling');
+    let count = 0;
+    const maxCount = 10 + Math.floor(Math.random() * 6);
+    const interval = setInterval(() => {
+      renderDie(dieEl, randomDieValue());
+      count++;
+      if (count >= maxCount) {
+        clearInterval(interval);
+        dieEl.classList.remove('rolling');
+        callback();
+      }
+    }, 80);
+  }
+
+  const die1 = document.getElementById('die1');
+  const die2 = document.getElementById('die2');
+  const fighter1 = document.getElementById('fighter1');
+  const fighter2 = document.getElementById('fighter2');
+  const hpBar1 = document.getElementById('hpBar1');
+  const hpBar2 = document.getElementById('hpBar2');
+  const hpText1 = document.getElementById('hpText1');
+  const hpText2 = document.getElementById('hpText2');
+  const rollBtn = document.getElementById('rollBtn');
+  const resultBanner = document.getElementById('resultBanner');
+  const historyEl = document.getElementById('history');
+  const clearBtn = document.getElementById('clearBtn');
+  const roundNum = document.getElementById('roundNum');
+  const autoBadge = document.getElementById('autoBadge');
+
+  const choices1 = {
+    atk: document.querySelector('#choices1 .choice-btn[data-choice="atk"]'),
+    ev:  document.querySelector('#choices1 .choice-btn[data-choice="ev"]'),
+  };
+
+  buildDie(die1);
+  buildDie(die2);
+
+  let hp1 = 100;
+  let hp2 = 100;
+  let round = 0;
+  let history = [];
+  let rolling = false;
+
+  // 주사위 1 선택 (사용자)
+  choices1.atk.addEventListener('click', () => {
+    if (rolling) return;
+    choices1.atk.classList.add('active-atk');
+    choices1.atk.classList.remove('active-ev');
+    choices1.ev.classList.remove('active-atk', 'active-ev');
+  });
+  choices1.ev.addEventListener('click', () => {
+    if (rolling) return;
+    choices1.ev.classList.add('active-ev');
+    choices1.ev.classList.remove('active-atk');
+    choices1.atk.classList.remove('active-atk', 'active-ev');
+  });
+
+  // 초기 상태: 공격
+  choices1.atk.click();
+
+  function getChoice1() {
+    return document.querySelector('#choices1 .choice-btn.active-atk, #choices1 .choice-btn.active-ev').dataset.choice;
+  }
+
+  function updateHud() {
+    hpBar1.style.width = Math.max(0, hp1) + '%';
+    hpBar2.style.width = Math.max(0, hp2) + '%';
+    hpText1.textContent = `HP ${Math.max(0, hp1)}`;
+    hpText2.textContent = `HP ${Math.max(0, hp2)}`;
+    fighter1.classList.toggle('defeated', hp1 <= 0);
+    fighter2.classList.toggle('defeated', hp2 <= 0);
+  }
+
+  function addDamageFlash(fighterEl, color) {
+    const flash = document.createElement('div');
+    flash.classList.add('damage-flash');
+    flash.style.background = color;
+    fighterEl.querySelector('.die').appendChild(flash);
+    setTimeout(() => flash.remove(), 500);
+  }
+
+  function addHistory(c1, c2, v1, v2, hp1After, hp2After, resultKey) {
+    history.unshift({ c1, c2, v1, v2, hp1: hp1After, hp2: hp2After, resultKey });
+    if (history.length > 12) history.pop();
+    renderHistory();
+  }
+
+  function renderHistory() {
+    historyEl.innerHTML = '';
+    if (history.length === 0) return;
+    history.forEach((h, idx) => {
+      const item = document.createElement('div');
+      item.classList.add('history-item');
+      const c1Label = h.c1 === 'atk' ? '공' : '회';
+      const c2Label = h.c2 === 'atk' ? '공' : '회';
+      item.textContent = `R${idx+1} [${c1Label}(나) vs ${c2Label}(AI)] ${h.v1}·${h.v2}  `;
+      const span = document.createElement('span');
+      if (h.resultKey === 'd1') { span.textContent = '1Damage'; item.style.borderColor = 'rgba(59,130,246,0.4)'; item.style.color = '#93c5fd'; }
+      else if (h.resultKey === 'd2') { span.textContent = '2Damage'; item.style.borderColor = 'rgba(236,72,153,0.4)'; item.style.color = '#f9a8d4'; }
+      else if (h.resultKey === 'none') { span.textContent = '무피해'; item.style.color = '#94a3b8'; }
+      else { span.textContent = '??'; }
+      item.appendChild(span);
+      historyEl.appendChild(item);
+    });
+  }
+
+  function showBanner(text, type) {
+    resultBanner.textContent = text;
+    resultBanner.className = 'result-banner show ' + type;
+  }
+
+  function updateAutoBadge(c2, v2) {
+    const label = c2 === 'atk' ? '공격 〈{Atk}' : '회피 〈{Ev}';
+    autoBadge.innerHTML = `<span class="icon">🤖</span> 주사위 2 선택: ${label}  ·  굴림: ${v2}`;
+  }
+
+  rollBtn.addEventListener('click', () => {
+    if (rolling) return;
+    if (hp1 <= 0 || hp2 <= 0) {
+      resultBanner.className = 'result-banner';
+      resultBanner.textContent = '이미 승패가 결정되었습니다. 초기화 후 다시 시작하세요.';
+      resultBanner.classList.add('show', 'defeated');
+      return;
+    }
+
+    rolling = true;
+    rollBtn.disabled = true;
+    resultBanner.className = 'result-banner';
+
+    const c1 = getChoice1();
+    const c2 = randomChoice(); // 주사위 2 자동 선택
+
+    // AI 선택 표시
+    autoBadge.innerHTML = `<span class="icon">🤖</span> 주사위 2 선택: ${c2 === 'atk' ? '공격 〈{Atk}' : '회피 〈{Ev}'}  ·  굴리는 중…`;
+    autoBadge.style.color = c2 === 'atk' ? '#fb923c' : '#22c55e';
+
+    die1.classList.add('rolling');
+    die2.classList.add('rolling');
+
+    animateRoll(die1, () => {
+      const v1 = randomDieValue();
+      renderDie(die1, v1);
+
+      animateRoll(die2, () => {
+        const v2 = randomDieValue();
+        renderDie(die2, v2);
+        die1.classList.remove('rolling');
+        die2.classList.remove('rolling');
+
+        round++;
+        roundNum.textContent = round;
+
+        let dmg1 = 0, dmg2 = 0;
+        let resultKey;
+        let bannerText, bannerType;
+
+        if (c1 === 'atk' && c2 === 'atk') {
+          if (v1 > v2) {
+            dmg2 = v1 - v2;
+            addDamageFlash(fighter2, 'rgba(239,68,68,0.6)');
+            resultKey = 'd2';
+            bannerText = `나(주사위 1, ${v1})가 주사위 2(${v2})를 공격! 차이 ${dmg2} 피해`;
+            bannerType = 'both-atk';
+          } else if (v2 > v1) {
+            dmg1 = v2 - v1;
+            addDamageFlash(fighter1, 'rgba(239,68,68,0.6)');
+            resultKey = 'd1';
+            bannerText = `주사위 2(${v2})가 나(주사위 1, ${v1})를 공격! 차이 ${dmg1} 피해`;
+            bannerType = 'both-atk';
+          } else {
+            resultKey = 'none';
+            bannerText = `무승부 공격! (${v1} vs ${v2}) 피해 없음`;
+            bannerType = 'both-atk';
+          }
+        } else if (c1 === 'atk' && c2 === 'ev') {
+          if (v1 > v2) {
+            dmg2 = v1 - v2;
+            addDamageFlash(fighter2, 'rgba(239,68,68,0.6)');
+            resultKey = 'd2';
+            bannerText = `나(${v1}) 공격 → 주사위 2 회피 실패! 관통 ${dmg2} 피해`;
+            bannerType = 'atk-ev';
+          } else {
+            resultKey = 'none';
+            bannerText = `나(${v1}) 공격 → 주사위 2 회피 성공! (주사위 2가 ${v2} 이상)`;
+            bannerType = 'atk-ev';
+          }
+        } else if (c1 === 'ev' && c2 === 'atk') {
+          if (v2 > v1) {
+            dmg1 = v2 - v1;
+            addDamageFlash(fighter1, 'rgba(239,68,68,0.6)');
+            resultKey = 'd1';
+            bannerText = `주사위 2(${v2}) 공격 → 내 회피 실패! 관통 ${dmg1} 피해`;
+            bannerType = 'atk-ev';
+          } else {
+            resultKey = 'none';
+            bannerText = `주사위 2(${v2}) 공격 → 내 회피 성공! (주사위 2가 ${v1} 이하)`;
+            bannerType = 'atk-ev';
+          }
+        } else {
+          resultKey = 'none';
+          bannerText = `둘 다 회피! (${v1} vs ${v2}) 피해 없음`;
+          bannerType = 'both-ev';
+        }
+
+        hp1 = Math.max(0, hp1 - dmg1);
+        hp2 = Math.max(0, hp2 - dmg2);
+        updateHud();
+        addHistory(c1, c2, v1, v2, hp1, hp2, resultKey);
+        updateAutoBadge(c2, v2);
+
+        if (hp1 <= 0 && hp2 <= 0) {
+          showBanner('💥 둘 다 쓰러졌다! (동시 패배)', 'defeated');
+        } else if (hp1 <= 0) {
+          showBanner(`💀 주사위 1(나) 패배! (HP 0)`, 'defeated');
+        } else if (hp2 <= 0) {
+          showBanner(`💀 주사위 2(AI) 패배! (HP 0)`, 'defeated');
+        } else {
+          showBanner(bannerText, bannerType);
+        }
+
+        rolling = false;
+        rollBtn.disabled = false;
+      });
+    });
+  });
+
+  clearBtn.addEventListener('click', () => {
+    hp1 = 100;
+    hp2 = 100;
+    round = 0;
+    history = [];
+    roundNum.textContent = '0';
+    resultBanner.className = 'result-banner';
+    updateHud();
+    renderHistory();
+    renderDie(die1, 1);
+    renderDie(die2, 1);
+    choices1.atk.click();
+    autoBadge.innerHTML = `<span class="icon">🤖</span> 대기 중…`;
+    autoBadge.style.color = '#f472b6';
+  });
+
+  updateHud();
+  renderDie(die1, 1);
+  renderDie(die2, 1);
+</script>
+
+</body>
+</html>
